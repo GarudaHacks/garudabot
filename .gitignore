@@ -55,4 +55,4 @@ tickets.json
 logs/
 
 # Firebase credentials
-garuda-hacks-6-0-firebase-adminsdk-fbsvc-3efa2614b6.json
+firebase-credentials.json

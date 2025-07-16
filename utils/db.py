@@ -6,6 +6,13 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
+categories = {
+    "Frontend", "React", "HTML/CSS", "Javascript/TypeScript", "Backend", 
+    "Python", "Java", "C++", "C#", "Go", "Ideation",
+    "Swift", "Kotlin", "Database", "SQL", "Pitching", "Cloud", "CI/CD", 
+    "Hardware", "Mobile", "AI/ML", "Web3", "Cybersecurity", "Git", "Other"
+}
+
 class FirebaseTicketDatabase:
     """Firebase Firestore database interface to manage tickets"""
     
@@ -19,19 +26,15 @@ class FirebaseTicketDatabase:
         """
         self.db = None
         self.tickets_collection = "tickets"
-        self.counter_collection = "counters"
+        self.dev_configs = "dev_configs"
         
-        # Initialize Firebase if not already initialized
         if not firebase_admin._apps:
             if credentials_path and os.path.exists(credentials_path):
-                # Use service account key file
                 cred = credentials.Certificate(credentials_path)
                 firebase_admin.initialize_app(cred)
             elif project_id:
-                # Use default credentials (for Google Cloud)
                 firebase_admin.initialize_app(project=project_id)
             else:
-                # Try to use environment variable for credentials
                 cred_json = os.getenv('FIREBASE_CREDENTIALS')
                 if cred_json:
                     cred_dict = json.loads(cred_json)
@@ -42,41 +45,34 @@ class FirebaseTicketDatabase:
         
         self.db = firestore.client()
 
-    def _get_next_ticket_id(self) -> int:
-        """Get the next available ticket ID using a counter document"""
-        counter_ref = self.db.collection(self.counter_collection).document('ticket_counter')
+    def create_ticket(self, user_id: int, user_name: str, title: str, description: str, location: str, categories: List[str] = None) -> Dict[str, Any]:
+        """Create a new ticket with a counter-based ID"""
+        counter_doc = self.db.collection(self.dev_configs).document('counter').get()
+        if counter_doc.exists:
+            current_counter = counter_doc.to_dict().get('value', 0)
+        else:
+            current_counter = 0
         
-        try:
-            # Try to get the current counter
-            counter_doc = counter_ref.get()
-            if counter_doc.exists:
-                current_id = counter_doc.to_dict().get('current_id', 0)
-            else:
-                current_id = 0
-            
-            # Increment and update
-            new_id = current_id + 1
-            counter_ref.set({'current_id': new_id})
-            return new_id
-            
-        except Exception as e:
-            # Fallback: get max ID from existing tickets
-            tickets = self.db.collection(self.tickets_collection).stream()
-            max_id = 0
-            for ticket in tickets:
-                ticket_data = ticket.to_dict()
-                max_id = max(max_id, ticket_data.get('id', 0))
-            return max_id + 1
-
-    def create_ticket(self, user_id: int, user_name: str, description: str) -> Dict[str, Any]:
-        """Create a new ticket"""
-        ticket_id = self._get_next_ticket_id()
+        ticket_id = str(current_counter + 1)
+        
+        self.db.collection(self.dev_configs).document('counter').set({
+            'value': current_counter + 1,
+            'updated_at': datetime.now().isoformat()
+        })
+        
+        if categories is None:
+            categories = []
+        else:
+            categories = [cat for cat in categories if cat in globals()["categories"]]
         
         ticket = {
             'id': ticket_id,
             'user_id': user_id,
             'user_name': user_name,
+            'title': title,
             'description': description,
+            'location': location,
+            'categories': categories,
             'status': 'open',
             'created_at': datetime.now().isoformat(),
             'mentor_id': None,
@@ -84,8 +80,7 @@ class FirebaseTicketDatabase:
             'closed_at': None
         }
         
-        # Add to Firestore
-        self.db.collection(self.tickets_collection).document(str(ticket_id)).set(ticket)
+        self.db.collection(self.tickets_collection).document(ticket_id).set(ticket)
         return ticket
 
     def get_ticket_by_id(self, ticket_id: int) -> Optional[Dict[str, Any]]:
@@ -98,9 +93,8 @@ class FirebaseTicketDatabase:
         except Exception:
             return None
 
-    # Get tickets related into one user
     def get_user_tickets(self, user_id: int) -> List[Dict[str, Any]]:
-        """Get all tickets for a specific user"""
+        """Returns all tickets for a specific user"""
         try:
             tickets = self.db.collection(self.tickets_collection).where(
                 filter=FieldFilter("user_id", "==", user_id)
@@ -109,9 +103,8 @@ class FirebaseTicketDatabase:
         except Exception:
             return []
 
-    # Return all unresolved tickets
     def get_open_tickets(self) -> List[Dict[str, Any]]:
-        """Get all open tickets"""
+        """Returns all unresolved tickets"""
         try:
             tickets = self.db.collection(self.tickets_collection).where(
                 filter=FieldFilter("status", "==", "open")
@@ -120,7 +113,6 @@ class FirebaseTicketDatabase:
         except Exception:
             return []
 
-    # Get all tickets handled by a mentor
     def get_mentor_tickets(self, mentor_id: int) -> List[Dict[str, Any]]:
         """Get all tickets assigned to a mentor"""
         try:
@@ -154,9 +146,8 @@ class FirebaseTicketDatabase:
         except Exception:
             return False
 
-    # Closes a pending ticket, changes status to 'closed'
     def close_ticket(self, ticket_id: int) -> bool:
-        """Close a ticket"""
+        """Closes a pending ticket, changes status to 'closed'"""
         try:
             ticket_ref = self.db.collection(self.tickets_collection).document(str(ticket_id))
             ticket_doc = ticket_ref.get()
@@ -199,50 +190,58 @@ class FirebaseTicketDatabase:
         except Exception:
             return False
 
-    # Utility function to display ticket statistics
-    # TODO: Should be able to show ticket statistics related to all mentors
-    def get_ticket_stats(self) -> Dict[str, Any]:
-        """Get ticket statistics"""
+    def release_ticket(self, ticket_id: int) -> bool:
+        """Release a ticket back to the queue by removing mentor assignment"""
         try:
-            # Get total tickets
-            total_tickets = len(list(self.db.collection(self.tickets_collection).stream()))
+            ticket_ref = self.db.collection(self.tickets_collection).document(str(ticket_id))
+            ticket_doc = ticket_ref.get()
             
-            # Get open tickets
-            open_tickets = len(list(self.db.collection(self.tickets_collection).where(
-                filter=FieldFilter("status", "==", "open")
-            ).stream()))
+            if not ticket_doc.exists:
+                return False
             
-            closed_tickets = total_tickets - open_tickets
+            ticket_data = ticket_doc.to_dict()
+            if ticket_data['status'] != 'open':
+                return False
             
-            return {
-                'total': total_tickets,
-                'open': open_tickets,
-                'closed': closed_tickets
-            }
+            # Update the ticket to remove mentor assignment
+            ticket_ref.update({
+                'mentor_id': None,
+                'mentor_name': None
+            })
+            return True
         except Exception:
-            return {'total': 0, 'open': 0, 'closed': 0}
+            return False
 
-    # Search for a specific ticket based on a string query
-    # TODO: Search by description, title, or category
-    def search_tickets(self, query: str) -> List[Dict[str, Any]]:
-        """Search tickets by description or user name"""
-        query = query.lower()
-        results = []
-        
+    def get_tickets_by_category(self, category: str) -> List[Dict[str, Any]]:
+        """Get all tickets for a specific category"""
         try:
-            # Get all tickets and filter locally (Firestore doesn't support full-text search)
-            tickets = self.db.collection(self.tickets_collection).stream()
-            
-            for ticket_doc in tickets:
-                ticket_data = ticket_doc.to_dict()
-                if (query in ticket_data['description'].lower() or 
-                    query in ticket_data['user_name'].lower() or
-                    query in str(ticket_data['id'])):
-                    results.append(ticket_data)
-            
-            return results
+            tickets = self.db.collection(self.tickets_collection).where(
+                filter=FieldFilter("categories", "array_contains", category)
+            ).stream()
+            return [ticket.to_dict() for ticket in tickets]
         except Exception:
             return []
+
+    def get_dev_config(self, config_key: str) -> Optional[str]:
+        """Get development configuration from Firebase"""
+        try:
+            doc = self.db.collection(self.dev_configs).document(config_key).get()
+            if doc.exists:
+                return doc.to_dict().get('value')
+            return None
+        except Exception:
+            return None
+
+    def set_dev_config(self, config_key: str, value: str) -> bool:
+        """Set development configuration in Firebase"""
+        try:
+            self.db.collection(self.dev_configs).document(config_key).set({
+                'value': value,
+                'updated_at': datetime.now().isoformat()
+            })
+            return True
+        except Exception:
+            return False
 
 # Global Firebase database instance
 firebase_db = None

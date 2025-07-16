@@ -1,283 +1,282 @@
 import discord
 from discord.ext import commands
-import json
-import os
 from datetime import datetime
+from utils.db import get_firebase_db
+from utils.styles import Colors, Emojis, Titles, Messages, Footers
 
 class Mentor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.tickets_file = "tickets.json"
+        self.db = get_firebase_db()
 
-    def load_tickets(self):
-        """Load tickets from JSON file"""
-        if os.path.exists(self.tickets_file):
-            try:
-                with open(self.tickets_file, 'r') as f:
-                    return json.load(f)
-            except json.JSONDecodeError:
-                return []
-        return []
-
-    def save_tickets(self, tickets):
-        """Save tickets to JSON file"""
-        with open(self.tickets_file, 'w') as f:
-            json.dump(tickets, f, indent=2)
-
-    def get_ticket_by_id(self, tickets, ticket_id):
+    def get_ticket_by_id(self, ticket_id):
         """Get ticket by ID"""
-        for ticket in tickets:
-            if ticket['id'] == ticket_id:
-                return ticket
-        return None
+        return self.db.get_ticket_by_id(ticket_id)
+
+    def get_open_tickets(self):
+        """Get all open tickets"""
+        return self.db.get_open_tickets()
 
     def is_mentor(self, ctx):
         """Check if user has mentor role"""
         mentor_role = discord.utils.get(ctx.guild.roles, name="Mentor")
         return mentor_role and mentor_role in ctx.author.roles
 
-    @commands.group(name='mentor', invoke_without_command=True)
-    async def mentor(self, ctx):
-        """Mentor management commands"""
-        if not self.is_mentor(ctx):
-            await ctx.send("❌ You need the Mentor role to use these commands.")
-            return
-        await ctx.send("Use `!help mentor` to see available mentor commands.")
-
-    @mentor.command(name='tickets')
+    @commands.command(name='tickets')
     async def view_tickets(self, ctx):
-        """View all open tickets"""
+        """View all open tickets (Mentor only)"""
         if not self.is_mentor(ctx):
-            await ctx.send("❌ You need the Mentor role to use this command.")
+            await ctx.send(f"{Emojis.ERROR} {Messages.MENTOR_ROLE_REQUIRED}.")
             return
 
-        tickets = self.load_tickets()
-        open_tickets = [ticket for ticket in tickets if ticket['status'] == 'open']
+        open_tickets = self.get_open_tickets()
 
         if not open_tickets:
             embed = discord.Embed(
-                title="📝 Open Tickets",
-                description="No open tickets at the moment!",
-                color=0x00ff00
+                title=Titles.OPEN_TICKETS,
+                description=Messages.NO_OPEN_TICKETS,
+                color=Colors.GREEN
             )
             await ctx.send(embed=embed)
             return
 
         embed = discord.Embed(
-            title="📝 Open Tickets",
+            title=Titles.OPEN_TICKETS,
             description=f"There are {len(open_tickets)} open ticket(s):",
-            color=0xffff00
+            color=Colors.DEFAULT
         )
 
         for ticket in open_tickets:
             mentor_status = f"Assigned to {ticket['mentor_name']}" if ticket['mentor_name'] else "**Unassigned**"
             
+            categories_info = ""
+            if ticket.get('categories'):
+                categories_info = f"\n**Categories:** {', '.join(ticket['categories'])}"
+            
+            title_info = f"\n**Title:** {ticket.get('title', 'No title')}"
+            location_info = f"\n**Location:** {ticket.get('location', 'No location')}"
+            
             embed.add_field(
-                name=f"🎫 Ticket #{ticket['id']}",
-                value=f"**User:** {ticket['user_name']}\n**Description:** {ticket['description'][:100]}...\n**Mentor:** {mentor_status}\n**Created:** {ticket['created_at'][:10]}",
+                name=f"{Emojis.TICKET} Ticket #{ticket['id']}",
+                value=f"**User:** {ticket['user_name']}{title_info}{location_info}\n**Description:** {ticket['description'][:100]}...\n**Mentor:** {mentor_status}{categories_info}\n**Created:** {ticket['created_at'][:10]}",
                 inline=False
             )
 
-        embed.set_footer(text="Use !mentor accept <ticket_id> to accept a ticket")
         await ctx.send(embed=embed)
 
-    @mentor.command(name='accept')
-    async def accept_ticket(self, ctx, ticket_id: int):
-        """Accept a ticket"""
+    @commands.command(name='accept')
+    async def accept_ticket(self, ctx, ticket_id: str):
+        """Accept a ticket (Mentor only)"""
         if not self.is_mentor(ctx):
-            await ctx.send("❌ You need the Mentor role to use this command.")
+            await ctx.send(f"{Emojis.ERROR} {Messages.MENTOR_ROLE_REQUIRED}.")
             return
 
-        tickets = self.load_tickets()
-        ticket = self.get_ticket_by_id(tickets, ticket_id)
+        ticket = self.get_ticket_by_id(ticket_id)
 
         if not ticket:
-            await ctx.send("❌ Ticket not found.")
+            await ctx.send(f"{Emojis.ERROR} {Messages.TICKET_NOT_FOUND_MSG}.")
             return
 
         if ticket['status'] != 'open':
-            await ctx.send("❌ This ticket is not open.")
+            await ctx.send(f"{Emojis.ERROR} This ticket is not open.")
             return
 
         if ticket['mentor_id']:
-            await ctx.send(f"❌ This ticket is already assigned to {ticket['mentor_name']}.")
+            await ctx.send(f"{Emojis.ERROR} This ticket is already assigned to {ticket['mentor_name']}.")
             return
 
-        ticket['mentor_id'] = ctx.author.id
-        ticket['mentor_name'] = ctx.author.display_name
-        self.save_tickets(tickets)
+        success = self.db.assign_ticket(ticket_id, ctx.author.id, ctx.author.display_name)
+        
+        if not success:
+            await ctx.send(f"{Emojis.ERROR} Failed to assign ticket. Please try again.")
+            return
 
         embed = discord.Embed(
-            title="✅ Ticket Accepted",
-            description=f"You have accepted Ticket #{ticket_id}",
-            color=0x00ff00
+            title=Titles.TICKET_ACCEPTED,
+            description=f"{Messages.TICKET_ACCEPTED_SUCCESS} #{ticket_id}",
+            color=Colors.GREEN
         )
         embed.add_field(name="User", value=ticket['user_name'], inline=True)
+        embed.add_field(name="Title", value=ticket.get('title', 'No title'), inline=False)
         embed.add_field(name="Description", value=ticket['description'], inline=False)
+        embed.add_field(name="Location", value=ticket.get('location', 'No location'), inline=False)
+        if ticket.get('categories'):
+            embed.add_field(name="Categories", value=", ".join(ticket['categories']), inline=False)
         embed.add_field(name="Accepted At", value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), inline=True)
 
         await ctx.send(embed=embed)
 
+        # notify the user
         try:
             user = await self.bot.fetch_user(ticket['user_id'])
             user_embed = discord.Embed(
-                title="🎫 Ticket Assigned",
-                description=f"Your ticket #{ticket_id} has been assigned to a mentor!",
-                color=0x00ff00
+                title=Titles.TICKET_ASSIGNED,
+                description=Messages.TICKET_ASSIGNED_SUCCESS,
+                color=Colors.GREEN
             )
             user_embed.add_field(name="Mentor", value=ctx.author.display_name, inline=True)
+            user_embed.add_field(name="Title", value=ticket.get('title', 'No title'), inline=False)
             user_embed.add_field(name="Description", value=ticket['description'], inline=False)
             await user.send(embed=user_embed)
         except:
             pass
 
-    @mentor.command(name='close')
-    async def close_ticket(self, ctx, ticket_id: int):
-        """Close a ticket as mentor"""
+    @commands.command(name='resolve')
+    async def close_ticket(self, ctx, ticket_id: str):
+        """Close a ticket as mentor (Mentor only)"""
         if not self.is_mentor(ctx):
-            await ctx.send("❌ You need the Mentor role to use this command.")
+            await ctx.send(f"{Emojis.ERROR} {Messages.MENTOR_ROLE_REQUIRED}.")
             return
 
-        tickets = self.load_tickets()
-        ticket = self.get_ticket_by_id(tickets, ticket_id)
+        ticket = self.get_ticket_by_id(ticket_id)
 
         if not ticket:
-            await ctx.send("❌ Ticket not found.")
+            await ctx.send(f"{Emojis.ERROR} {Messages.TICKET_NOT_FOUND_MSG}.")
             return
 
         if ticket['status'] == 'closed':
-            await ctx.send("❌ This ticket is already closed.")
+            await ctx.send(f"{Emojis.ERROR} This ticket is already closed.")
             return
 
         if ticket['mentor_id'] != ctx.author.id:
-            await ctx.send("❌ You can only close tickets assigned to you.")
+            await ctx.send(f"{Emojis.ERROR} You can only close tickets assigned to you.")
             return
 
-        ticket['status'] = 'closed'
-        ticket['closed_at'] = datetime.now().isoformat()
-        self.save_tickets(tickets)
+        success = self.db.close_ticket(ticket_id)
+        if not success:
+            await ctx.send(f"{Emojis.ERROR} Failed to close ticket. Please try again.")
+            return
 
         embed = discord.Embed(
-            title="🔒 Ticket Closed",
+            title=Titles.TICKET_CLOSED,
             description=f"Ticket #{ticket_id} has been closed by mentor.",
-            color=0xff0000
+            color=Colors.GRAY
         )
         embed.add_field(name="Closed By", value=ctx.author.display_name, inline=True)
         embed.add_field(name="User", value=ticket['user_name'], inline=True)
+        embed.add_field(name="Title", value=ticket.get('title', 'No title'), inline=False)
         embed.add_field(name="Closed At", value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), inline=True)
 
         await ctx.send(embed=embed)
 
+        # notify the user
         try:
             user = await self.bot.fetch_user(ticket['user_id'])
             user_embed = discord.Embed(
-                title="🔒 Ticket Closed",
+                title=Titles.TICKET_CLOSED,
                 description=f"Your ticket #{ticket_id} has been closed by your mentor.",
-                color=0xff0000
+                color=Colors.GRAY
             )
             user_embed.add_field(name="Closed By", value=ctx.author.display_name, inline=True)
             await user.send(embed=user_embed)
         except:
             pass
 
-    @mentor.command(name='assign')
-    async def assign_ticket(self, ctx, ticket_id: int, member: discord.Member):
-        """Assign a ticket to another mentor"""
+    @commands.command(name='assign')
+    async def assign_ticket(self, ctx, ticket_id: str, member: discord.Member):
+        """Assign a ticket to another mentor (Mentor only)"""
         if not self.is_mentor(ctx):
-            await ctx.send("❌ You need the Mentor role to use this command.")
+            await ctx.send(f"{Emojis.ERROR} {Messages.MENTOR_ROLE_REQUIRED}.")
             return
 
         mentor_role = discord.utils.get(ctx.guild.roles, name="Mentor")
         if not mentor_role or mentor_role not in member.roles:
-            await ctx.send("❌ You can only assign tickets to other mentors.")
+            await ctx.send(f"{Emojis.ERROR} You can only assign tickets to other mentors.")
             return
 
-        tickets = self.load_tickets()
-        ticket = self.get_ticket_by_id(tickets, ticket_id)
+        ticket = self.get_ticket_by_id(ticket_id)
 
         if not ticket:
-            await ctx.send("❌ Ticket not found.")
+            await ctx.send(f"{Emojis.ERROR} {Messages.TICKET_NOT_FOUND_MSG}.")
             return
 
         if ticket['status'] != 'open':
-            await ctx.send("❌ This ticket is not open.")
+            await ctx.send(f"{Emojis.ERROR} This ticket is not open.")
             return
 
         if ticket['mentor_id'] != ctx.author.id:
-            await ctx.send("❌ You can only reassign tickets assigned to you.")
+            await ctx.send(f"{Emojis.ERROR} You can only reassign tickets assigned to you.")
             return
 
-        old_mentor = ticket['mentor_name']
-        ticket['mentor_id'] = member.id
-        ticket['mentor_name'] = member.display_name
-        self.save_tickets(tickets)
+        success = self.db.reassign_ticket(ticket_id, member.id, member.display_name)
+        if not success:
+            await ctx.send(f"{Emojis.ERROR} Failed to reassign ticket. Please try again.")
+            return
 
         embed = discord.Embed(
-            title="🔄 Ticket Reassigned",
-            description=f"Ticket #{ticket_id} has been reassigned.",
-            color=0x00ff00
+            title=Titles.TICKET_REASSIGNED,
+            description=f"Ticket #{ticket_id} has been reassigned to {member.display_name}.",
+            color=Colors.GREEN
         )
-        embed.add_field(name="From", value=old_mentor, inline=True)
-        embed.add_field(name="To", value=member.display_name, inline=True)
+        embed.add_field(name="Reassigned By", value=ctx.author.display_name, inline=True)
+        embed.add_field(name="New Mentor", value=member.display_name, inline=True)
         embed.add_field(name="User", value=ticket['user_name'], inline=True)
 
         await ctx.send(embed=embed)
 
+        # notify the new mentor
         try:
-            new_mentor_embed = discord.Embed(
-                title="🎫 Ticket Assigned to You",
-                description=f"You have been assigned Ticket #{ticket_id}",
-                color=0x00ff00
+            mentor_embed = discord.Embed(
+                title=Titles.TICKET_ASSIGNED,
+                description=f"You have been assigned ticket #{ticket_id}",
+                color=Colors.GREEN
             )
-            new_mentor_embed.add_field(name="User", value=ticket['user_name'], inline=True)
-            new_mentor_embed.add_field(name="Description", value=ticket['description'], inline=False)
-            await member.send(embed=new_mentor_embed)
+            mentor_embed.add_field(name="User", value=ticket['user_name'], inline=True)
+            mentor_embed.add_field(name="Title", value=ticket.get('title', 'No title'), inline=False)
+            mentor_embed.add_field(name="Description", value=ticket['description'], inline=False)
+            await member.send(embed=mentor_embed)
         except:
             pass
 
         try:
             user = await self.bot.fetch_user(ticket['user_id'])
             user_embed = discord.Embed(
-                title="🔄 Mentor Changed",
+                title=Titles.TICKET_ASSIGNED,
                 description=f"Your ticket #{ticket_id} has been reassigned to a new mentor.",
-                color=0x00ff00
+                color=Colors.GREEN
             )
             user_embed.add_field(name="New Mentor", value=member.display_name, inline=True)
             await user.send(embed=user_embed)
         except:
             pass
 
-    @mentor.command(name='my')
+    @commands.command(name='my')
     async def my_tickets(self, ctx):
-        """View tickets assigned to you"""
+        """View your assigned tickets (Mentor only)"""
         if not self.is_mentor(ctx):
-            await ctx.send("❌ You need the Mentor role to use this command.")
+            await ctx.send(f"{Emojis.ERROR} {Messages.MENTOR_ROLE_REQUIRED}.")
             return
 
-        tickets = self.load_tickets()
-        my_tickets = [ticket for ticket in tickets if ticket['mentor_id'] == ctx.author.id]
+        mentor_tickets = self.db.get_mentor_tickets(ctx.author.id)
 
-        if not my_tickets:
+        if not mentor_tickets:
             embed = discord.Embed(
-                title="📝 Your Assigned Tickets",
-                description="You don't have any assigned tickets.",
-                color=0x808080
+                title=Titles.MY_TICKETS,
+                description="You have no assigned tickets.",
+                color=Colors.GRAY
             )
             await ctx.send(embed=embed)
             return
 
         embed = discord.Embed(
-            title="📝 Your Assigned Tickets",
-            description=f"You have {len(my_tickets)} assigned ticket(s):",
-            color=0x00ff00
+            title=Titles.MY_TICKETS,
+            description=f"You have {len(mentor_tickets)} assigned ticket(s):",
+            color=Colors.GREEN
         )
 
-        for ticket in my_tickets:
-            status_emoji = "🟢" if ticket['status'] == 'open' else "🔴"
+        for ticket in mentor_tickets:
+            status_emoji = Emojis.OPEN_TICKET if ticket['status'] == 'open' else Emojis.CLOSED_TICKET
+            
+            categories_info = ""
+            if ticket.get('categories'):
+                categories_info = f"\n**Categories:** {', '.join(ticket['categories'])}"
+            
+            title_info = f"\n**Title:** {ticket.get('title', 'No title')}"
+            location_info = f"\n**Location:** {ticket.get('location', 'No location')}"
             
             embed.add_field(
                 name=f"{status_emoji} Ticket #{ticket['id']}",
-                value=f"**User:** {ticket['user_name']}\n**Status:** {ticket['status'].title()}\n**Description:** {ticket['description'][:100]}...\n**Created:** {ticket['created_at'][:10]}",
+                value=f"**Status:** {ticket['status'].title()}{title_info}{location_info}\n**User:** {ticket['user_name']}\n**Description:** {ticket['description'][:100]}...{categories_info}\n**Created:** {ticket['created_at'][:10]}",
                 inline=False
             )
 

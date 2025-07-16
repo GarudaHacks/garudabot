@@ -3,6 +3,9 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 import logging
+import ssl
+import certifi
+from utils.styles import Colors, Emojis, Titles, Messages, Footers
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -24,6 +27,11 @@ intents.message_content = True
 intents.guilds = True
 intents.reactions = True
 
+# Configure SSL context
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 @bot.event
@@ -32,21 +40,58 @@ async def on_ready():
     logger.info(f'{bot.user} has connected to Discord!')
     logger.info(f'Bot is in {len(bot.guilds)} guilds')
     
-    # Set bot status
     await bot.change_presence(activity=discord.Game(name="!help for commands"))
+    await post_ticket_interface_in_channels()
+
+async def post_ticket_interface_in_channels():
+    """Post the ticket creation interface in configured channels"""
+    from utils.db import get_firebase_db
+    from commands.ticket import PublicCategorySelectionView
+    from utils.styles import Colors
+    
+    db = get_firebase_db()
+    ticket_channel_id = db.get_dev_config('ticket_channel')
+    
+    if not ticket_channel_id:
+        logger.info("No ticket channel configured. Use !setup to set up channels.")
+        return
+    
+    try:
+        for guild in bot.guilds:
+            ticket_channel = guild.get_channel(int(ticket_channel_id))
+            if ticket_channel:
+                async for message in ticket_channel.history(limit=50):
+                    if message.author == bot.user and message.embeds:
+                        for embed in message.embeds:
+                            if embed.title == "Need 1:1 mentor help?":
+                                logger.info(f"Ticket interface already exists in {guild.name}")
+                                return
+                
+                embed = discord.Embed(
+                    title="Need 1:1 mentor help?",
+                    description="Select a technology you need help with and follow the instructions!",
+                    color=Colors.GREEN
+                )
+                
+                view = PublicCategorySelectionView()
+                await ticket_channel.send(embed=embed, view=view)
+                logger.info(f"Posted ticket interface in {guild.name}")
+                
+    except Exception as e:
+        logger.error(f"Failed to post ticket interface: {e}")
 
 @bot.event
 async def on_command_error(ctx, error):
     """Global error handler"""
     if isinstance(error, commands.CommandNotFound):
-        await ctx.send("❌ Command not found. Use `!help` to see available commands.")
+        await ctx.send(f"{Emojis.ERROR} Command not found. Use `!help` to see available commands.")
     elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ You don't have permission to use this command.")
+        await ctx.send(f"{Emojis.ERROR} You don't have permission to use this command.")
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ Missing required argument: {error.param}")
+        await ctx.send(f"{Emojis.ERROR} Missing required argument: {error.param}")
     else:
         logger.error(f"Unhandled error: {error}")
-        await ctx.send("❌ An unexpected error occurred. Please try again.")
+        await ctx.send(f"{Emojis.ERROR} An unexpected error occurred. Please try again.")
 
 @bot.command(name='help')
 async def help_command(ctx):
@@ -54,83 +99,50 @@ async def help_command(ctx):
     embed = discord.Embed(
         title="🎫 Ticket Bot Help",
         description="Welcome to Garuda Hacks 6.0!",
-        color=0x00ff00
+        color=Colors.DEFAULT
     )
     
     embed.add_field(
-        name="📝 User Commands",
+        name=f"{Emojis.USER_COMMANDS} User Commands",
         value="""
-        `!ticket create <description>` - Create a new ticket
-        `!ticket list` - List your tickets
-        `!ticket close <ticket_id>` - Close your ticket
-        `!ticket info <ticket_id>` - Get ticket information
+        `!create` - Create a new ticket (with category selection)
+        `!list` - List your tickets
+        `!close_ticket <ticket_id>` - Close your ticket
+        `!info <ticket_id>` - Get ticket information
         """,
         inline=False
     )
     
     embed.add_field(
-        name="👨‍🏫 Mentor Commands",
+        name=f"{Emojis.MENTOR_COMMANDS} Mentor Commands",
         value="""
         `!mentor tickets` - View all open tickets
         `!mentor accept <ticket_id>` - Accept a ticket
-        `!mentor close <ticket_id>` - Close a ticket as mentor
+        `!mentor resolve <ticket_id>` - Close a ticket as mentor
         `!mentor assign <ticket_id> <user>` - Assign ticket to another mentor
+        `!mentor my` - View your assigned tickets
         """,
         inline=False
     )
     
     embed.add_field(
-        name="⚙️ Admin Commands",
+        name=f"{Emojis.ADMIN_COMMANDS} Admin Commands",
         value="""
-        `!setup` - Set up the bot (Admin only)
-        `!config` - View bot configuration
+        `!setup` - Configure channels interactively (Admin only)
+        `!post` - Post the interactive ticket creation interface (Admin only)
+        `!post_interface` - Manually post ticket interface in configured channels (Admin only)
         """,
         inline=False
     )
     
-    embed.set_footer(text="Use !help <command> for detailed information about a specific command")
     await ctx.send(embed=embed)
 
-@bot.command(name='setup')
+@bot.command(name='post_interface')
 @commands.has_permissions(administrator=True)
-async def setup(ctx):
-    """Set up the bot for the server (Admin only)"""
-    embed = discord.Embed(
-        title="🔧 Bot Setup",
-        description="Setting up ticket management system...",
-        color=0x00ff00
-    )
-    
-    # create ticket category if it doesn't exist
-    category_name = "🎫 Tickets"
-    category = discord.utils.get(ctx.guild.categories, name=category_name)
-    
-    if not category:
-        try:
-            category = await ctx.guild.create_category(category_name)
-            embed.add_field(name="✅ Category Created", value=f"Created '{category_name}' category", inline=False)
-        except discord.Forbidden:
-            embed.add_field(name="❌ Permission Error", value="Bot needs 'Manage Channels' permission", inline=False)
-            await ctx.send(embed=embed)
-            return
-    
-    # create a mentor role if it doesn't yet exist
-    mentor_role_name = "Mentor"
-    mentor_role = discord.utils.get(ctx.guild.roles, name=mentor_role_name)
-    
-    if not mentor_role:
-        try:
-            mentor_role = await ctx.guild.create_role(
-                name=mentor_role_name,
-                color=0x00ff00,
-                reason="Ticket bot setup - Mentor role"
-            )
-            embed.add_field(name="✅ Mentor Role Created", value=f"Created '{mentor_role_name}' role", inline=False)
-        except discord.Forbidden:
-            embed.add_field(name="❌ Permission Error", value="Bot needs 'Manage Roles' permission", inline=False)
-    
-    embed.add_field(name="🎉 Setup Complete", value="The bot is ready to handle tickets!", inline=False)
-    await ctx.send(embed=embed)
+async def post_interface(ctx):
+    """Manually post the ticket creation interface (Admin only)"""
+    await post_ticket_interface_in_channels()
+    await ctx.send(f"{Emojis.SUCCESS} Ticket interface posted in configured channels!")
 
 # Load command cogs
 async def load_extensions():
