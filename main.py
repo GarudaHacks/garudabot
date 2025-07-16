@@ -46,7 +46,7 @@ async def on_ready():
 async def post_ticket_interface_in_channels():
     """Post the ticket creation interface in configured channels"""
     from utils.db import get_firebase_db
-    from commands.ticket import PublicCategorySelectionView
+    from views.ticket_views import PublicCategorySelectionView
     from utils.styles import Colors
     
     db = get_firebase_db()
