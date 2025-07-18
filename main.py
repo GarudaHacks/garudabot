@@ -5,12 +5,32 @@ from dotenv import load_dotenv
 import logging
 import ssl
 import certifi
+import json
 from utils.styles import Colors, Emojis, Titles, Messages, Footers
 
 load_dotenv()
+
+# Environment variables
 TOKEN = os.getenv("DISCORD_TOKEN")
 FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH")
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
+FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS")
+
+# Validate required environment variables
+if not TOKEN:
+    raise ValueError("DISCORD_TOKEN environment variable is required")
+
+if not FIREBASE_PROJECT_ID:
+    raise ValueError("FIREBASE_PROJECT_ID environment variable is required")
+
+# Validate Firebase credentials
+if FIREBASE_CREDENTIALS_JSON:
+    credentials_path = "/tmp/firebase-credentials.json"
+    with open(credentials_path, 'w') as f:
+        json.dump(json.loads(FIREBASE_CREDENTIALS_JSON), f)
+    FIREBASE_CREDENTIALS_PATH = credentials_path
+elif not FIREBASE_CREDENTIALS_PATH:
+    raise ValueError("Either FIREBASE_CREDENTIALS or FIREBASE_CREDENTIALS_PATH must be set")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('discord')
