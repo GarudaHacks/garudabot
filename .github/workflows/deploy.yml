@@ -74,6 +74,14 @@ jobs:
         with:
           credentials_json: "${{ secrets.GCP_SA_KEY }}"
 
+      - name: Create env vars file
+        run: |
+          cat > env_vars.yaml << EOF
+          DISCORD_TOKEN: "${{ secrets.DISCORD_TOKEN }}"
+          FIREBASE_PROJECT_ID: "${{ secrets.FIREBASE_PROJECT_ID }}"
+          FIREBASE_CREDENTIALS: '${{ secrets.FIREBASE_CREDENTIALS }}'
+          EOF
+
       - name: Deploy to Cloud Run
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
@@ -82,10 +90,7 @@ jobs:
           region: ${{ env.REGION }}
           # NOTE: If required, update to the appropriate source folder
           source: ./
-          env_vars: |
-            DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
-            FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
-            FIREBASE_CREDENTIALS=${{ secrets.FIREBASE_CREDENTIALS }}
+          flags: --set-env-vars-file=env_vars.yaml
 
       # If required, use the Cloud Run url output in later steps
       - name: Show Output
