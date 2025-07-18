@@ -18,26 +18,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Google Auth
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
+      - name: Setup Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Configure Docker
         run: gcloud auth configure-docker
 
-      - name: Deploy to Cloud Run
+      - name: Create flags file
         run: |
-          gcloud run deploy $SERVICE_NAME \
-            --source . \
-            --platform managed \
-            --region $REGION \
-            --allow-unauthenticated \
-            --memory 512Mi \
-            --cpu 1 \
-            --timeout 3600 \
-            --max-instances 1 \
-            --set-env-vars "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }},FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }},FIREBASE_CREDENTIALS=${{ secrets.FIREBASE_CREDENTIALS }}"
+          cat > deploy-flags.yaml << 'EOF'
+          --source: .
+          --platform: managed
+          --region: us-central1
+          --allow-unauthenticated: true
+          --memory: 512Mi
+          --cpu: 1
+          --timeout: 3600
+          --max-instances: 1
+          --set-env-vars: |
+            DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }},FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }},FIREBASE_CREDENTIALS=${{ secrets.FIREBASE_CREDENTIALS }}
+          EOF
+
+      - name: Deploy to Cloud Run
+        run: gcloud run deploy garudabot --flags-file=deploy-flags.yaml
