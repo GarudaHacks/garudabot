@@ -59,7 +59,7 @@ README.md
 # Local development
 .env.local
 .env.development
-.env.test
+.env.test 
 
 # Firebase credentials (will be provided via environment variables)
 firebase-credentials.json 
