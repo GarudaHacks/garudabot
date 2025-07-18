@@ -6,11 +6,13 @@ from datetime import datetime
 import asyncio
 from utils.db import get_firebase_db, categories
 from utils.styles import Colors, Emojis, Titles, Messages, Footers
-from views.ticket_views import (
-    TicketCreateModal, CategorySelectionView, PublicCategorySelectionView,
-    AcceptTicketView, MentorActionView, UserTicketView, notify_mentors
+from views.create_ticket import (
+    TicketCreateModal, CategorySelectionView, PublicCategorySelectionView
 )
-from views.admin_views import ChannelSetupView
+from views.manage_ticket import AcceptTicketView, notify_mentors
+from views.mentor_action import MentorActionView
+from views.hacker_action import UserTicketView
+from views.select_channel import ChannelSetupView
 
 class Ticket(commands.Cog):
     """

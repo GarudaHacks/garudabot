@@ -46,7 +46,7 @@ async def on_ready():
 async def post_ticket_interface_in_channels():
     """Post the ticket creation interface in configured channels"""
     from utils.db import get_firebase_db
-    from views.ticket_views import PublicCategorySelectionView
+    from views.create_ticket import PublicCategorySelectionView
     from utils.styles import Colors
     
     db = get_firebase_db()
@@ -103,7 +103,7 @@ async def help_command(ctx):
     )
     
     embed.add_field(
-        name=f"{Emojis.USER_COMMANDS} User Commands",
+        name=f"{Emojis.HACKER_COMMANDS} Hacker Commands",
         value="""
         `!create` - Create a new ticket (with category selection)
         `!list` - List your tickets

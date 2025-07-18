@@ -58,7 +58,7 @@ class Mentor(commands.Cog):
             
             embed.add_field(
                 name=f"{Emojis.TICKET} Ticket #{ticket['id']}",
-                value=f"**User:** {ticket['user_name']}{title_info}{location_info}\n**Description:** {ticket['description'][:100]}...\n**Mentor:** {mentor_status}{categories_info}\n**Created:** {ticket['created_at'][:10]}",
+                value=f"**Hacker:** {ticket['user_name']}{title_info}{location_info}\n**Description:** {ticket['description'][:100]}...\n**Mentor:** {mentor_status}{categories_info}\n**Created:** {ticket['created_at'][:10]}",
                 inline=False
             )
 
@@ -96,7 +96,7 @@ class Mentor(commands.Cog):
             description=f"{Messages.TICKET_ACCEPTED_SUCCESS} #{ticket_id}",
             color=Colors.GREEN
         )
-        embed.add_field(name="User", value=ticket['user_name'], inline=True)
+        embed.add_field(name="Hacker", value=ticket['user_name'], inline=True)
         embed.add_field(name="Title", value=ticket.get('title', 'No title'), inline=False)
         embed.add_field(name="Description", value=ticket['description'], inline=False)
         embed.add_field(name="Location", value=ticket.get('location', 'No location'), inline=False)
@@ -153,7 +153,7 @@ class Mentor(commands.Cog):
             color=Colors.GRAY
         )
         embed.add_field(name="Closed By", value=ctx.author.display_name, inline=True)
-        embed.add_field(name="User", value=ticket['user_name'], inline=True)
+        embed.add_field(name="Hacker", value=ticket['user_name'], inline=True)
         embed.add_field(name="Title", value=ticket.get('title', 'No title'), inline=False)
         embed.add_field(name="Closed At", value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), inline=True)
 
@@ -210,7 +210,7 @@ class Mentor(commands.Cog):
         )
         embed.add_field(name="Reassigned By", value=ctx.author.display_name, inline=True)
         embed.add_field(name="New Mentor", value=member.display_name, inline=True)
-        embed.add_field(name="User", value=ticket['user_name'], inline=True)
+        embed.add_field(name="Hacker", value=ticket['user_name'], inline=True)
 
         await ctx.send(embed=embed)
 
@@ -221,7 +221,7 @@ class Mentor(commands.Cog):
                 description=f"You have been assigned ticket #{ticket_id}",
                 color=Colors.GREEN
             )
-            mentor_embed.add_field(name="User", value=ticket['user_name'], inline=True)
+            mentor_embed.add_field(name="Hacker", value=ticket['user_name'], inline=True)
             mentor_embed.add_field(name="Title", value=ticket.get('title', 'No title'), inline=False)
             mentor_embed.add_field(name="Description", value=ticket['description'], inline=False)
             await member.send(embed=mentor_embed)
@@ -276,7 +276,7 @@ class Mentor(commands.Cog):
             
             embed.add_field(
                 name=f"{status_emoji} Ticket #{ticket['id']}",
-                value=f"**Status:** {ticket['status'].title()}{title_info}{location_info}\n**User:** {ticket['user_name']}\n**Description:** {ticket['description'][:100]}...{categories_info}\n**Created:** {ticket['created_at'][:10]}",
+                value=f"**Status:** {ticket['status'].title()}{title_info}{location_info}\n**Hacker:** {ticket['user_name']}\n**Description:** {ticket['description'][:100]}...{categories_info}\n**Created:** {ticket['created_at'][:10]}",
                 inline=False
             )
 

@@ -1,7 +1,11 @@
 import discord
 from utils.db import get_firebase_db
-from utils.styles import Colors, Titles, Messages
+from utils.styles import Colors, Titles, Messages, Footers
 
+"""
+Components for setting up mentor and ticket channel configs
+
+"""
 class ChannelSetupView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -21,7 +25,6 @@ class TicketChannelSelect(discord.ui.ChannelSelect):
 
     async def callback(self, interaction: discord.Interaction):
         self.view.ticket_channel = self.values[0]
-        await interaction.response.send_message(f"Selected ticket channel: {self.values[0].mention}", ephemeral=True)
 
 class MentorChannelSelect(discord.ui.ChannelSelect):
     def __init__(self):
@@ -32,7 +35,6 @@ class MentorChannelSelect(discord.ui.ChannelSelect):
 
     async def callback(self, interaction: discord.Interaction):
         self.view.mentor_channel = self.values[0]
-        await interaction.response.send_message(f"Selected mentor channel: {self.values[0].mention}", ephemeral=True)
 
 class SaveChannelsButton(discord.ui.Button):
     def __init__(self):
@@ -56,7 +58,7 @@ class SaveChannelsButton(discord.ui.Button):
         
         embed = discord.Embed(
             title=Titles.CHANNEL_CONFIG,
-            description=Messages.CONFIG_NOTE,
+            description=Footers.CONFIG_NOTE,
             color=Colors.GREEN
         )
         embed.add_field(name="Ticket Channel", value=self.view.ticket_channel.mention, inline=True)
@@ -71,7 +73,7 @@ class SaveChannelsButton(discord.ui.Button):
                 color=Colors.GREEN
             )
             
-            from views.ticket_views import PublicCategorySelectionView
+            from views.create_ticket import PublicCategorySelectionView
             view = PublicCategorySelectionView()
             await self.view.ticket_channel.send(embed=ticket_embed, view=view)
         except Exception as e:

@@ -26,7 +26,7 @@ class Emojis:
     SYNC = "🔄"
     
     # Categories
-    USER_COMMANDS = "📝"
+    HACKER_COMMANDS = "📝"
     MENTOR_COMMANDS = "👨‍🏫"
     ADMIN_COMMANDS = "⚙️"
     
