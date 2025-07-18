@@ -127,7 +127,7 @@ class MentorActionView(discord.ui.View):
                 description="A ticket has been released back to the queue and is available for mentors.",
                 color=Colors.DISCORD_DEFAULT
             )
-                                ticket_embed.add_field(name="Hacker", value=self.ticket['user_name'], inline=True)
+            ticket_embed.add_field(name="Hacker", value=self.ticket['user_name'], inline=True)
             ticket_embed.add_field(name="Title", value=self.ticket.get('title', 'No title'), inline=False)
             ticket_embed.add_field(name="Description", value=self.ticket['description'][:200] + "..." if len(self.ticket['description']) > 200 else self.ticket['description'], inline=False)
             ticket_embed.add_field(name="Location", value=self.ticket['location'], inline=True)

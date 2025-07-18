@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
+# Copy requirements first for better caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -15,12 +15,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create non-root user for security
-RUN useradd --create-home --shell /bin/bash app
-RUN chown -R app:app /app
+RUN useradd --create-home --shell /bin/bash app && \
+    chown -R app:app /app
 USER app
 
-# Expose port (Cloud Run will set PORT env var)
+# Cloud Run will set PORT env var
+ENV PORT=8080
+
+# Expose the port
 EXPOSE 8080
 
-# Run the bot
+# Use exec form for proper signal handling
 CMD ["python", "main.py"] 
